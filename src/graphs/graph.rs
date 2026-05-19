@@ -83,6 +83,21 @@ impl Graph {
         0
     }
 
+    // CURRENT MAX DEGREE
+    pub fn max_degree_vertex(&self) -> Option<Vertex> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut idx_max: usize = 0;
+        for (idx, is_active) in self.active_vertices.iter().enumerate() {
+            if *is_active && self.degree(idx_max) < self.degree(idx) {
+                idx_max = idx;
+            }
+        }
+        Some(idx_max)
+    }
+
     // GET RANDOM EDGE
     pub fn get_arbitrary_edge(&self) -> Option<(Vertex, Vertex)> {
         for u in 0..self.neighbors.len() {
@@ -103,8 +118,17 @@ impl Graph {
         None
     }
 
+    // GET NEIGHBORS OF GIVEN VERTEX
+    pub fn get_neighbors(&self, u: Vertex) -> Vec<Vertex> {
+        let mut neighbors: Vec<Vertex> = Vec::new();
+        for neighbor in &self.neighbors[u] {
+            neighbors.push(*neighbor);
+        }
+        neighbors
+    }
+
     // KERNALIZATION B - GET VERTEX OF DEGREE > K
     pub fn get_kernel_vertex(&self, k: usize) -> Option<Vertex> {
-    self.active_vertices.iter().enumerate().filter(|&(_, &is_active)| is_active).map(|(u, _)| u).find(|&u| k < self.degree(u))
-}
+        self.active_vertices.iter().enumerate().filter(|&(_, &is_active)| is_active).map(|(u, _)| u).find(|&u| k < self.degree(u))
+    }
 }
