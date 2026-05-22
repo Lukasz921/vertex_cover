@@ -1,76 +1,51 @@
-use vertex_cover::graphs::algorithms::*;
-use vertex_cover::graphs::graph::*;
+use vertex_cover::kernel::*;
+use vertex_cover::graph::*;
+use vertex_cover::fpt::*;
+
 use std::io::{self, BufRead};
-use std::time::{SystemTime};
-use std::time::UNIX_EPOCH;
 use std::path::Path;
 use std::fs::File;
+use std::thread;
 
-const PATH: &str = "in.txt";
-const K: usize = 7;
+const PATH: &str = "420.txt";
 
 fn main() {
-    let graph_1: Graph = load_graph_from_file(PATH);
-    let graph_2: Graph = graph_1.clone();
-    let graph_3: Graph = graph_1.clone();
-    let graph_4: Graph = graph_1.clone();
+    let builder: thread::Builder = thread::Builder::new().stack_size(256 * 1024 * 1024);   
+    let handler: thread::JoinHandle<()> = builder.spawn(|| { run_solver(); }).unwrap();
+    handler.join().unwrap();
+}
 
-    let mut start: std::time::Duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    if let Some(vertex_cover_1) = find_vertex_cover_1(graph_1, K) {
-        println!("Vertex cover with O(K^2) kernelization - non optimal fpt:");
-        for vertex in vertex_cover_1 {
-            println!("Vertex: {}", vertex);
+fn run_solver() {
+    let mut graph: Graph = load_graph_from_file(PATH);
+    
+    let mut global_cover: Vec<Vertex> = big_kernelization(&mut graph);
+    let k_base: Count = global_cover.len();
+    
+    if graph.is_empty() {
+        println!("Graph solved entirely by kernelization!");
+        println!("Total cover size: {}", global_cover.len());
+        return;
+    }
+
+    let remaining_vertices: Count = graph.size();
+    let lower_bound: Count = remaining_vertices.div_ceil(2);
+    let upper_bound: Count = remaining_vertices;
+
+    println!("Starting FPT phase.");
+    println!("Remaining vertices to cover: {}", remaining_vertices);
+    println!("Searching in range k = [{} .. {}]", lower_bound, upper_bound);
+
+    for k_remaining in lower_bound..=upper_bound {
+        println!("  -> Trying budget k = {} (Total VC = {})", k_remaining, k_base + k_remaining);
+        if let Some(fpt_cover) = fpt(graph.clone(), k_remaining) {
+            println!("SUCCESS!");
+            global_cover.extend(fpt_cover);
+            println!("Optimal Vertex Cover found. Total size: {}", global_cover.len());
+            return;
         }
     }
-    else {
-        println!("No solution found!");
-    }
-    let mut end: std::time::Duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    println!("Solution 1 time: {:?}", end - start);
-    println!();
-
-    start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    if let Some(vertex_cover_2) = find_vertex_cover_2(graph_2, K) {
-        println!("Vertex cover with O(K^2) kernelization - optimal fpt:");
-        for vertex in vertex_cover_2 {
-            println!("Vertex: {}", vertex);
-        }
-    }
-    else {
-        println!("No solution found!");
-    }
-    end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    println!("Solution 2 time: {:?}", end - start);
-    println!();
-
-
-    start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    if let Some(vertex_cover_3) = find_vertex_cover_with_symplex_1(graph_3, K, PATH) {
-        println!("Vertex cover with O(K^2) kernelization - non optimal fpt:");
-        for vertex in vertex_cover_3 {
-            println!("Vertex: {}", vertex);
-        }
-    }
-    else {
-        println!("No solution found!");
-    }
-    end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    println!("Solution 3 time: {:?}", end - start);
-    println!();
-
-
-    start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    if let Some(vertex_cover_4) = find_vertex_cover_with_symplex_2(graph_4, K, PATH) {
-        println!("Vertex cover with O(2K) symplex kernelization - optimal fpt:");
-        for vertex in vertex_cover_4 {
-            println!("Vertex: {}", vertex);
-        }
-    }
-    else {
-        println!("No solution found!");
-    }
-    end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    println!("Solution 4 time: {:?}", end - start);
+    
+    println!("Failed to find solution (this shouldn't be reached if graph is valid).");
 }
 
 pub fn load_graph_from_file(filename: &str) -> Graph {
@@ -87,8 +62,59 @@ pub fn load_graph_from_file(filename: &str) -> Graph {
     for ip in lines.map_while(Result::ok) {
         let edge: Vec<usize> = ip.split_whitespace().map(|s| s.parse().unwrap()).collect();
         if edge.len() == 2 {
-            graph.add_edge(edge[0], edge[1]);
+            graph.add_edge(edge[0] - 1, edge[1] - 1);
         }
     }
     graph
+}
+
+pub fn big_kernelization(graph: &mut Graph) -> Vec<Vertex> {
+    let mut cover: Vec<Vertex> = Vec::new();
+    let mut kernelization_not_done: bool = true;
+
+    let mut counter: Count = 0;
+    
+    while kernelization_not_done {
+        kernelization_not_done = false;
+
+        let partial_cover: Vec<Vertex> = kernelization(graph, None); 
+
+        if !partial_cover.is_empty() {
+            counter += 1;
+            println!("Normal kernelization {}, |V1| = {}, summarise partial cover size = {}", counter, partial_cover.len(), partial_cover.len() + cover.len());
+            cover.extend(partial_cover);
+            kernelization_not_done = true;
+            continue;
+        }
+
+        let max_degree_vertex: Vertex = graph.max_degree();
+        let partial_cover: Vec<Vertex> = kernelization(graph, Some(max_degree_vertex));
+
+        if !partial_cover.is_empty() {
+            counter += 1;
+            println!("Max degree kernelization {}, |V1| = {}, summarise partial cover size = {}", counter, partial_cover.len(), partial_cover.len() + cover.len());
+            cover.extend(partial_cover);
+            kernelization_not_done = true;
+            continue;
+        }
+
+        let original_vertices: Vec<Vertex> = graph.neighborhood.keys().copied().collect();
+
+        for vertex in original_vertices {
+            let partial_cover: Vec<Vertex> = kernelization(graph, Some(vertex));
+            if !partial_cover.is_empty() {
+                counter += 1;
+                println!("Naive kernelization {}, for vertex: {}, |V1| = {}, summarise partial cover size = {}", counter, vertex, partial_cover.len(), partial_cover.len() + cover.len());
+                cover.extend(partial_cover);
+                kernelization_not_done = true;
+                break;
+            }
+        }
+    }
+
+    println!("END OF KERNELIZATION");
+    println!("Summarize partial cover size: {}", cover.len());
+    println!("Number of iterations: {}", counter);
+
+    cover
 }
