@@ -2,7 +2,7 @@ use std::collections::*;
 use crate::graph::*;
 use good_lp::*;
 
-pub fn kernelization(graph: &mut Graph, vertex_with_one: Option<Vertex>) -> Vec<Vertex> {
+pub fn kernelization(graph: &mut Graph, vertex_with_one: Option<Vertex>) -> (Vec<Vertex>, Count, Count, Count, Count) {
     let mut variables: ProblemVariables = ProblemVariables::new();
     
     let mut vars: HashMap<Vertex, Variable> = HashMap::new();
@@ -43,10 +43,15 @@ pub fn kernelization(graph: &mut Graph, vertex_with_one: Option<Vertex>) -> Vec<
             }
         }
     };
+
+    let n: Count = graph.size();
+    let v12_count: Count = n - to_remove.len();
+    let v1_count: Count = partial_cover.len();
+    let v0_count: Count = n - v12_count - v1_count;
     
     for vertex in to_remove {
         graph.remove_vertex(vertex);
     }
     
-    partial_cover
+    (partial_cover, v0_count, v12_count, v1_count, n)
 }

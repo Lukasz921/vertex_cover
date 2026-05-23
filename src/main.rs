@@ -48,6 +48,7 @@ fn run_solver() {
     println!("Failed to find solution (this shouldn't be reached if graph is valid).");
 }
 
+
 pub fn load_graph_from_file(filename: &str) -> Graph {
     let path: &Path = Path::new(filename);
     let file: File = File::open(path).expect("Cannot open file!");
@@ -77,22 +78,24 @@ pub fn big_kernelization(graph: &mut Graph) -> Vec<Vertex> {
     while kernelization_not_done {
         kernelization_not_done = false;
 
-        let partial_cover: Vec<Vertex> = kernelization(graph, None); 
+        let (partial_cover, v0_count, v12_count, v1_count, n) = kernelization(graph, None); 
 
         if !partial_cover.is_empty() {
             counter += 1;
-            println!("Normal kernelization {}, |V1| = {}, summarise partial cover size = {}", counter, partial_cover.len(), partial_cover.len() + cover.len());
+            println!("{}. Normal kernelization: |V0| = {}, |V1/2| = {}, |V1| = {}, N = {}, summarise partial cover size = {}",
+                counter, v0_count, v12_count, v1_count, n, partial_cover.len() + cover.len());
             cover.extend(partial_cover);
             kernelization_not_done = true;
             continue;
         }
-
+        
         let max_degree_vertex: Vertex = graph.max_degree();
-        let partial_cover: Vec<Vertex> = kernelization(graph, Some(max_degree_vertex));
+        let (partial_cover, v0_count, v12_count, v1_count, n) = kernelization(graph, Some(max_degree_vertex)); 
 
         if !partial_cover.is_empty() {
             counter += 1;
-            println!("Max degree kernelization {}, |V1| = {}, summarise partial cover size = {}", counter, partial_cover.len(), partial_cover.len() + cover.len());
+            println!("{}. Max degree kernelization: |V0| = {}, |V1/2| = {}, |V1| = {}, N = {}, summarise partial cover size = {}",
+                counter, v0_count, v12_count, v1_count, n, partial_cover.len() + cover.len());
             cover.extend(partial_cover);
             kernelization_not_done = true;
             continue;
@@ -101,13 +104,14 @@ pub fn big_kernelization(graph: &mut Graph) -> Vec<Vertex> {
         let original_vertices: Vec<Vertex> = graph.neighborhood.keys().copied().collect();
 
         for vertex in original_vertices {
-            let partial_cover: Vec<Vertex> = kernelization(graph, Some(vertex));
+            let (partial_cover, v0_count, v12_count, v1_count, n) = kernelization(graph, None); 
             if !partial_cover.is_empty() {
                 counter += 1;
-                println!("Naive kernelization {}, for vertex: {}, |V1| = {}, summarise partial cover size = {}", counter, vertex, partial_cover.len(), partial_cover.len() + cover.len());
+                println!("{}. Naive kernelization for vertex {}: |V0| = {}, |V1/2| = {}, |V1| = {}, N = {}, summarise partial cover size = {}",
+                counter, vertex, v0_count, v12_count, v1_count, n, partial_cover.len() + cover.len());
                 cover.extend(partial_cover);
                 kernelization_not_done = true;
-                break;
+                continue;
             }
         }
     }

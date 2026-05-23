@@ -9,7 +9,7 @@ pub fn fpt(mut g_a: Graph, mut k: usize) -> Option<Vec<Vertex>> {
     while kernelization_active {
         kernelization_active = false;
         
-        let partial_cover: Vec<Vertex> = kernelization(&mut g_a, None);
+        let (partial_cover, _, _, _, _) = kernelization(&mut g_a, None);
 
         if !partial_cover.is_empty() {
 
